@@ -1,6 +1,5 @@
 
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { supabase } from "./supabase";
 
 export default function App() {
@@ -9,12 +8,15 @@ export default function App() {
   const [teams, setTeams] = useState([]);
   const [matches, setMatches] = useState([]);
   const [tournament, setTournament] = useState(null);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [registering, setRegistering] = useState(false);
+
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
 
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamSeed, setNewTeamSeed] = useState("");
@@ -22,6 +24,7 @@ export default function App() {
   const [selectedTeam, setSelectedTeam] = useState("");
   const [adminPlayers, setAdminPlayers] = useState([]);
 
+  // LOAD TOURNAMENT AND BRACKET
   async function loadTournament() {
     const { data: event, error: eventError } = await supabase
       .from("tournaments")
@@ -51,7 +54,10 @@ export default function App() {
       .order("match_number");
 
     if (teamError || matchError) {
-      setMessage("Could not load bracket information.");
+      setMessage(
+        "Could not load bracket information: " +
+          (teamError?.message || matchError?.message)
+      );
     } else {
       setTeams(teamData || []);
       setMatches(matchData || []);
@@ -60,43 +66,116 @@ export default function App() {
     setLoading(false);
   }
 
+  // LOAD PLAYER PROFILE
   async function loadProfile(user) {
     if (!user) {
       setProfile(null);
       return;
     }
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
       .select("*")
       .eq("id", user.id)
       .maybeSingle();
 
+    if (error) {
+      setMessage("Could not load player profile: " + error.message);
+      setProfile(null);
+      return;
+    }
+
     setProfile(data || null);
   }
 
+  // HANDLE EMAIL CONFIRMATION LINKS
+  useEffect(() => {
+    let active = true;
+
+    async function confirmEmail() {
+      const params = new URLSearchParams(window.location.search);
+      const tokenHash = params.get("token_hash");
+      const type = params.get("type");
+
+      if (!tokenHash || type !== "email") return;
+
+      setMessage("Confirming your email address...");
+
+      const { data, error } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: "email"
+      });
+
+      if (!active) return;
+
+      if (error) {
+        setMessage(
+          "Email confirmation failed: " +
+            error.message +
+            ". You may need a new confirmation email."
+        );
+        return;
+      }
+
+      setSession(data.session || null);
+      await loadProfile(data.user);
+
+      if (!active) return;
+
+      setMessage(
+        "Your email has been confirmed successfully! Welcome to ZRL Competitive Arena."
+      );
+
+      // Remove the confirmation token from the browser address.
+      window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname + window.location.hash
+      );
+    }
+
+    confirmEmail();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // INITIAL LOAD AND AUTHENTICATION LISTENER
   useEffect(() => {
     let mounted = true;
 
     async function start() {
       await loadTournament();
 
-      const { data } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getSession();
 
-      if (mounted) {
-        setSession(data.session);
-        await loadProfile(data.session?.user);
+      if (!mounted) return;
+
+      if (error) {
+        setMessage("Authentication error: " + error.message);
       }
+
+      setSession(data.session);
+      await loadProfile(data.session?.user);
     }
 
     start();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
+      (_event, newSession) => {
         if (!mounted) return;
 
         setSession(newSession);
-        await loadProfile(newSession?.user);
+
+        // Load the profile after the authentication event.
+        if (newSession?.user) {
+          setTimeout(() => {
+            if (mounted) loadProfile(newSession.user);
+          }, 0);
+        } else {
+          setProfile(null);
+        }
       }
     );
 
@@ -106,6 +185,7 @@ export default function App() {
     };
   }, []);
 
+  // LIVE BRACKET UPDATES
   useEffect(() => {
     if (!tournament) return;
 
@@ -138,44 +218,114 @@ export default function App() {
     };
   }, [tournament]);
 
+  // PLAYER REGISTRATION AND SIGN IN
   async function handleAuth(event) {
     event.preventDefault();
     setMessage("");
+    setAuthLoading(true);
 
-    if (registering) {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
+    try {
+      if (registering) {
+        if (!displayName.trim()) {
+          setMessage("Please enter your player name.");
+          return;
+        }
+
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: {
+              display_name: displayName.trim()
+            }
+          }
+        });
+
+        if (error) {
+          setMessage("Registration failed: " + error.message);
+          return;
+        }
+
+        if (data.user && !data.session) {
+          setMessage(
+            "Your player account has been created! Check your email and click the confirmation link before signing in."
+          );
+        } else {
+          setMessage("Your player account has been created successfully!");
+        }
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password
+        });
+
+        if (error) {
+          setMessage(
+            error.message.toLowerCase().includes("email not confirmed")
+              ? "Your email has not been confirmed yet. Check your inbox or use the RESEND CONFIRMATION EMAIL button below."
+              : "Sign-in failed: " + error.message
+          );
+          return;
+        }
+
+        setMessage("You have successfully signed in!");
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  // RESEND CONFIRMATION EMAIL
+  async function resendConfirmationEmail() {
+    if (!email.trim()) {
+      setMessage("Enter your email address first.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setMessage("");
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: email.trim(),
         options: {
-          data: { display_name: displayName }
+          emailRedirectTo: window.location.origin
         }
       });
 
       if (error) {
-        setMessage(error.message);
+        setMessage("Could not resend confirmation: " + error.message);
       } else {
         setMessage(
-          "Registration submitted! Check your email if confirmation is required."
+          "A new confirmation email has been requested. Check your inbox and spam folder."
         );
       }
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (error) setMessage(error.message);
+    } finally {
+      setAuthLoading(false);
     }
   }
 
+  // SIGN OUT
   async function logout() {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      setMessage("Sign-out failed: " + error.message);
+      return;
+    }
+
+    setProfile(null);
     setMessage("You have signed out.");
   }
 
+  // PLAYER VOTING
   async function castVote(match, winnerId) {
     if (!session || !profile) {
-      setMessage("Please sign in and make sure your player profile is ready.");
+      setMessage(
+        "Please sign in and make sure your player profile is ready."
+      );
       return;
     }
 
@@ -196,13 +346,19 @@ export default function App() {
     }
   }
 
+  // TEAM NAME LOOKUP
   function teamName(id) {
     if (!id) return "Waiting for winner";
+
     return teams.find((team) => team.id === id)?.name || "Team";
   }
 
+  // ADMIN: ADD TEAM
   async function addTeam() {
-    if (!newTeamName.trim() || !tournament) return;
+    if (!newTeamName.trim() || !tournament) {
+      setMessage("Enter a team name first.");
+      return;
+    }
 
     const { error } = await supabase.from("teams").insert({
       tournament_id: tournament.id,
@@ -211,7 +367,7 @@ export default function App() {
     });
 
     if (error) {
-      setMessage(error.message);
+      setMessage("Could not add team: " + error.message);
       return;
     }
 
@@ -221,6 +377,7 @@ export default function App() {
     await loadTournament();
   }
 
+  // ADMIN: UPDATE MATCH WINNER
   async function updateMatchWinner(match, winnerId) {
     const { error } = await supabase
       .from("matches")
@@ -231,7 +388,7 @@ export default function App() {
       .eq("id", match.id);
 
     if (error) {
-      setMessage(error.message);
+      setMessage("Could not update match: " + error.message);
       return;
     }
 
@@ -239,6 +396,7 @@ export default function App() {
     await loadTournament();
   }
 
+  // ADMIN: LOAD PLAYERS
   async function loadAdminPlayers() {
     const { data, error } = await supabase
       .from("profiles")
@@ -246,15 +404,20 @@ export default function App() {
       .order("display_name");
 
     if (error) {
-      setMessage(error.message);
+      setMessage("Could not load players: " + error.message);
       return;
     }
 
     setAdminPlayers(data || []);
+    setMessage("Player list loaded.");
   }
 
+  // ADMIN: ASSIGN PLAYER TO TEAM
   async function assignPlayer() {
-    if (!selectedPlayer || !selectedTeam) return;
+    if (!selectedPlayer || !selectedTeam) {
+      setMessage("Select both a player and a team.");
+      return;
+    }
 
     const { error } = await supabase
       .from("profiles")
@@ -262,14 +425,16 @@ export default function App() {
       .eq("id", selectedPlayer);
 
     if (error) {
-      setMessage(error.message);
+      setMessage("Could not assign player: " + error.message);
       return;
     }
 
     setMessage("Player assigned successfully!");
     await loadAdminPlayers();
+    await loadProfile(session.user);
   }
 
+  // ROUND TITLES
   function roundTitle(round) {
     return {
       1: "QUARTER FINALS",
@@ -285,15 +450,15 @@ export default function App() {
       <header className="topbar">
         <a className="brand" href="#">
           <span className="brand-mark">Z</span>
-          <span>ZRL <b>COMPETITIVE ARENA</b></span>
+          <span>
+            ZRL <b>COMPETITIVE ARENA</b>
+          </span>
         </a>
 
         <nav>
           <a href="#bracket">Bracket</a>
           <a href="#account">Player Account</a>
-          {profile?.role === "admin" && (
-            <a href="#admin">Admin</a>
-          )}
+          {profile?.role === "admin" && <a href="#admin">Admin</a>}
         </nav>
 
         {session ? (
@@ -345,6 +510,7 @@ export default function App() {
           </div>
         )}
 
+        {/* TOURNAMENT BRACKET */}
         <section id="bracket" className="section">
           <div className="section-heading">
             <div>
@@ -380,7 +546,9 @@ export default function App() {
 
                             return (
                               <div
-                                className={`team-row ${isWinner ? "winner" : ""}`}
+                                className={`team-row ${
+                                  isWinner ? "winner" : ""
+                                }`}
                                 key={index}
                               >
                                 <span>{teamName(teamId)}</span>
@@ -423,6 +591,7 @@ export default function App() {
           )}
         </section>
 
+        {/* PLAYER ACCOUNT */}
         <section id="account" className="section account-section">
           <div>
             <span className="eyebrow">JOIN THE ARENA</span>
@@ -434,7 +603,9 @@ export default function App() {
 
           {session ? (
             <div className="account-card">
-              <h3>Welcome, {profile?.display_name || session.user.email}</h3>
+              <h3>
+                Welcome, {profile?.display_name || session.user.email}
+              </h3>
               <p>{session.user.email}</p>
               <p>Account type: {profile?.role || "Player"}</p>
               <p>Team: {teamName(profile?.team_id)}</p>
@@ -452,7 +623,10 @@ export default function App() {
                 <button
                   type="button"
                   className={!registering ? "selected" : ""}
-                  onClick={() => setRegistering(false)}
+                  onClick={() => {
+                    setRegistering(false);
+                    setMessage("");
+                  }}
                 >
                   SIGN IN
                 </button>
@@ -460,7 +634,10 @@ export default function App() {
                 <button
                   type="button"
                   className={registering ? "selected" : ""}
-                  onClick={() => setRegistering(true)}
+                  onClick={() => {
+                    setRegistering(true);
+                    setMessage("");
+                  }}
                 >
                   REGISTER
                 </button>
@@ -492,13 +669,33 @@ export default function App() {
                 minLength={6}
               />
 
-              <button className="primary-button full-button" type="submit">
-                {registering ? "CREATE PLAYER ACCOUNT" : "SIGN IN"}
+              <button
+                className="primary-button full-button"
+                type="submit"
+                disabled={authLoading}
+              >
+                {authLoading
+                  ? "PLEASE WAIT..."
+                  : registering
+                    ? "CREATE PLAYER ACCOUNT"
+                    : "SIGN IN"}
               </button>
+
+              {!registering && (
+                <button
+                  type="button"
+                  className="outline-button full-button"
+                  onClick={resendConfirmationEmail}
+                  disabled={authLoading}
+                >
+                  RESEND CONFIRMATION EMAIL
+                </button>
+              )}
             </form>
           )}
         </section>
 
+        {/* ADMIN DASHBOARD */}
         {profile?.role === "admin" && (
           <section id="admin" className="section">
             <span className="eyebrow">TOURNAMENT CONTROL</span>
@@ -580,11 +777,13 @@ export default function App() {
               {matches.map((match) => (
                 <div key={match.id}>
                   <p>
-                    {roundTitle(match.round_number)} — Match {match.match_number}
+                    {roundTitle(match.round_number)} — Match{" "}
+                    {match.match_number}
                   </p>
 
                   <p>
-                    {teamName(match.team1_id)} vs {teamName(match.team2_id)}
+                    {teamName(match.team1_id)} vs{" "}
+                    {teamName(match.team2_id)}
                   </p>
 
                   {match.team1_id && (
@@ -620,5 +819,8 @@ export default function App() {
         <span>COMPETE WITH PURPOSE.</span>
       </footer>
     </div>
+  );
+}
+
   );
 }
