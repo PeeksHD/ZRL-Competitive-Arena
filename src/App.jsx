@@ -165,7 +165,7 @@ const [adminPlayers, setAdminPlayers] = useState([]);
     }
   }
 
-  async function logout() 
+  async function logout() {
     await supabase.auth.signOut();
     setMessage("You have signed out.");
   }
