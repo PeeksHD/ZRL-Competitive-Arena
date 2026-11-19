@@ -1,3 +1,4 @@
+
 import React from "react";
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
@@ -14,12 +15,13 @@ export default function App() {
   const [registering, setRegistering] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
-const [newTeamName, setNewTeamName] = useState("");
-const [newTeamSeed, setNewTeamSeed] = useState("");
-const [selectedPlayer, setSelectedPlayer] = useState("");
-const [selectedTeam, setSelectedTeam] = useState("");
-const [adminPlayers, setAdminPlayers] = useState([]);
-  
+
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamSeed, setNewTeamSeed] = useState("");
+  const [selectedPlayer, setSelectedPlayer] = useState("");
+  const [selectedTeam, setSelectedTeam] = useState("");
+  const [adminPlayers, setAdminPlayers] = useState([]);
+
   async function loadTournament() {
     const { data: event, error: eventError } = await supabase
       .from("tournaments")
@@ -92,6 +94,7 @@ const [adminPlayers, setAdminPlayers] = useState([]);
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (_event, newSession) => {
         if (!mounted) return;
+
         setSession(newSession);
         await loadProfile(newSession?.user);
       }
@@ -165,10 +168,11 @@ const [adminPlayers, setAdminPlayers] = useState([]);
     }
   }
 
-async function logout() {
-  await supabase.auth.signOut();
-  setMessage("You have signed out.");
-}
+  async function logout() {
+    await supabase.auth.signOut();
+    setMessage("You have signed out.");
+  }
+
   async function castVote(match, winnerId) {
     if (!session || !profile) {
       setMessage("Please sign in and make sure your player profile is ready.");
@@ -193,77 +197,79 @@ async function logout() {
   }
 
   function teamName(id) {
-  if (!id) return "Waiting for winner";
+    if (!id) return "Waiting for winner";
     return teams.find((team) => team.id === id)?.name || "Team";
   }
-{async function addTeam() {
-  if (!newTeamName.trim()) return;
 
-  const { error } = await supabase.from("teams").insert({
-    tournament_id: tournament.id,
-    name: newTeamName.trim(),
-    seed: Number(newTeamSeed) || teams.length + 1
-  });
+  async function addTeam() {
+    if (!newTeamName.trim() || !tournament) return;
 
-  if (error) {
-    setMessage(error.message);
-    return;
+    const { error } = await supabase.from("teams").insert({
+      tournament_id: tournament.id,
+      name: newTeamName.trim(),
+      seed: Number(newTeamSeed) || teams.length + 1
+    });
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setNewTeamName("");
+    setNewTeamSeed("");
+    setMessage("Team added successfully!");
+    await loadTournament();
   }
 
-  setNewTeamName("");
-  setNewTeamSeed("");
-  setMessage("Team added successfully!");
-  await loadTournament();
-}
+  async function updateMatchWinner(match, winnerId) {
+    const { error } = await supabase
+      .from("matches")
+      .update({
+        winner_team_id: winnerId,
+        status: "verified"
+      })
+      .eq("id", match.id);
 
-async function updateMatchWinner(match, winnerId) {
-  const { error } = await supabase
-    .from("matches")
-    .update({
-      winner_team_id: winnerId,
-      status: "verified"
-    })
-    .eq("id", match.id);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
 
-  if (error) {
-    setMessage(error.message);
-    return;
+    setMessage("Match winner updated!");
+    await loadTournament();
   }
 
-  setMessage("Match winner updated!");
-  await loadTournament();
+  async function loadAdminPlayers() {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .order("display_name");
 
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
 
-async function loadAdminPlayers() {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .order("display_name");
-
-  if (error) {
-    setMessage(error.message);
-    return;
+    setAdminPlayers(data || []);
   }
 
-  setAdminPlayers(data || []);
-}
+  async function assignPlayer() {
+    if (!selectedPlayer || !selectedTeam) return;
 
-async function assignPlayer() {
-  if (!selectedPlayer || !selectedTeam) return;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ team_id: selectedTeam })
+      .eq("id", selectedPlayer);
 
-  const { error } = await supabase
-    .from("profiles")
-    .update({ team_id: selectedTeam })
-    .eq("id", selectedPlayer);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
 
-  if (error) {
-    setMessage(error.message);
-    return;
+    setMessage("Player assigned successfully!");
+    await loadAdminPlayers();
   }
 
-  setMessage("Player assigned successfully!");
-  await loadAdminPlayers();
-}
   function roundTitle(round) {
     return {
       1: "QUARTER FINALS",
@@ -314,6 +320,7 @@ async function assignPlayer() {
               VIEW TOURNAMENT
             </a>
           </div>
+
           <div className="hero-side">
             <div className="hero-symbol">ZRL</div>
             <span>COMPETE. DOMINATE. REPEAT.</span>
@@ -325,6 +332,7 @@ async function assignPlayer() {
             <span className="eyebrow">CURRENT EVENT</span>
             <h2>{tournament?.name || "ZRL TOURNAMENT"}</h2>
           </div>
+
           <span className={`event-status ${tournament?.status || "upcoming"}`}>
             {tournament?.status || "Loading"}
           </span>
@@ -428,12 +436,9 @@ async function assignPlayer() {
             <div className="account-card">
               <h3>Welcome, {profile?.display_name || session.user.email}</h3>
               <p>{session.user.email}</p>
-              <p>
-                Account type: {profile?.role || "Player"}
-              </p>
-              <p>
-                Team: {teamName(profile?.team_id)}
-              </p>
+              <p>Account type: {profile?.role || "Player"}</p>
+              <p>Team: {teamName(profile?.team_id)}</p>
+
               {!profile?.team_id && (
                 <p className="helper">
                   An administrator needs to assign you to a team before you
@@ -451,6 +456,7 @@ async function assignPlayer() {
                 >
                   SIGN IN
                 </button>
+
                 <button
                   type="button"
                   className={registering ? "selected" : ""}
@@ -491,8 +497,122 @@ async function assignPlayer() {
               </button>
             </form>
           )}
-        </section> 
-     
+        </section>
+
+        {profile?.role === "admin" && (
+          <section id="admin" className="section">
+            <span className="eyebrow">TOURNAMENT CONTROL</span>
+            <h2>ZRL ADMIN DASHBOARD</h2>
+
+            <div className="account-card">
+              <h3>TEAM MANAGEMENT</h3>
+
+              <input
+                placeholder="New team name"
+                value={newTeamName}
+                onChange={(e) => setNewTeamName(e.target.value)}
+              />
+
+              <input
+                type="number"
+                placeholder="Team seed"
+                value={newTeamSeed}
+                onChange={(e) => setNewTeamSeed(e.target.value)}
+              />
+
+              <button className="primary-button" onClick={addTeam}>
+                ADD TEAM
+              </button>
+
+              <h3>REGISTERED TEAMS</h3>
+
+              {teams.map((team) => (
+                <p key={team.id}>
+                  #{team.seed} — {team.name}
+                </p>
+              ))}
+            </div>
+
+            <div className="account-card">
+              <h3>PLAYER MANAGEMENT</h3>
+
+              <button
+                className="primary-button"
+                onClick={loadAdminPlayers}
+              >
+                LOAD PLAYERS
+              </button>
+
+              <select
+                value={selectedPlayer}
+                onChange={(e) => setSelectedPlayer(e.target.value)}
+              >
+                <option value="">Select player</option>
+
+                {adminPlayers.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.display_name || player.id}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={selectedTeam}
+                onChange={(e) => setSelectedTeam(e.target.value)}
+              >
+                <option value="">Assign to team</option>
+
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+
+              <button className="primary-button" onClick={assignPlayer}>
+                ASSIGN PLAYER
+              </button>
+            </div>
+
+            <div className="account-card">
+              <h3>MATCH MANAGEMENT</h3>
+
+              {matches.map((match) => (
+                <div key={match.id}>
+                  <p>
+                    {roundTitle(match.round_number)} — Match {match.match_number}
+                  </p>
+
+                  <p>
+                    {teamName(match.team1_id)} vs {teamName(match.team2_id)}
+                  </p>
+
+                  {match.team1_id && (
+                    <button
+                      onClick={() =>
+                        updateMatchWinner(match, match.team1_id)
+                      }
+                    >
+                      WINNER: {teamName(match.team1_id)}
+                    </button>
+                  )}
+
+                  {match.team2_id && (
+                    <button
+                      onClick={() =>
+                        updateMatchWinner(match, match.team2_id)
+                      }
+                    >
+                      WINNER: {teamName(match.team2_id)}
+                    </button>
+                  )}
+
+                  <hr />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
 
       <footer>
