@@ -14,7 +14,12 @@ export default function App() {
   const [registering, setRegistering] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
-
+const [newTeamName, setNewTeamName] = useState("");
+const [newTeamSeed, setNewTeamSeed] = useState("");
+const [selectedPlayer, setSelectedPlayer] = useState("");
+const [selectedTeam, setSelectedTeam] = useState("");
+const [adminPlayers, setAdminPlayers] = useState([]);
+  
   async function loadTournament() {
     const { data: event, error: eventError } = await supabase
       .from("tournaments")
