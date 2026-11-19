@@ -165,11 +165,10 @@ const [adminPlayers, setAdminPlayers] = useState([]);
     }
   }
 
-  async function logout() {
-    await supabase.auth.signOut();
-    setMessage("You have signed out.");
-  }
-
+async function logout() {
+  await supabase.auth.signOut();
+  setMessage("You have signed out.");
+}
   async function castVote(match, winnerId) {
     if (!session || !profile) {
       setMessage("Please sign in and make sure your player profile is ready.");
