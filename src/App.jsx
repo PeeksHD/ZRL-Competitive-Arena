@@ -494,17 +494,74 @@ async function assignPlayer() {
           )}
         </section>
 
-        {profile?.role === "admin" && (
-          <section id="admin" className="section">
-            <span className="eyebrow">TOURNAMENT CONTROL</span>
-            <h2>ADMIN ACCESS</h2>
-            <p>
-              Your administrator account is recognized. Team editing and
-              match management controls will be added after the database
-              permissions are configured.
-            </p>
-          </section>
-        )}
+       async function addTeam() {
+  if (!newTeamName.trim()) return;
+
+  const { error } = await supabase.from("teams").insert({
+    tournament_id: tournament.id,
+    name: newTeamName.trim(),
+    seed: Number(newTeamSeed) || teams.length + 1
+  });
+
+  if (error) {
+    setMessage(error.message);
+    return;
+  }
+
+  setNewTeamName("");
+  setNewTeamSeed("");
+  setMessage("Team added successfully!");
+  await loadTournament();
+}
+
+async function updateMatchWinner(match, winnerId) {
+  const { error } = await supabase
+    .from("matches")
+    .update({
+      winner_team_id: winnerId,
+      status: "verified"
+    })
+    .eq("id", match.id);
+
+  if (error) {
+    setMessage(error.message);
+    return;
+  }
+
+  setMessage("Match winner updated!");
+  await loadTournament();
+}
+
+async function loadAdminPlayers() {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .order("display_name");
+
+  if (error) {
+    setMessage(error.message);
+    return;
+  }
+
+  setAdminPlayers(data || []);
+}
+
+async function assignPlayer() {
+  if (!selectedPlayer || !selectedTeam) return;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ team_id: selectedTeam })
+    .eq("id", selectedPlayer);
+
+  if (error) {
+    setMessage(error.message);
+    return;
+  }
+
+  setMessage("Player assigned successfully!");
+  await loadAdminPlayers();
+}
       </main>
 
       <footer>
