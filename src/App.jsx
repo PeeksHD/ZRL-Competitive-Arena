@@ -165,7 +165,39 @@ const [adminPlayers, setAdminPlayers] = useState([]);
     }
   }
 
-  async function logout() {async function addTeam() {
+  async function logout() 
+    await supabase.auth.signOut();
+    setMessage("You have signed out.");
+  }
+
+  async function castVote(match, winnerId) {
+    if (!session || !profile) {
+      setMessage("Please sign in and make sure your player profile is ready.");
+      return;
+    }
+
+    const { error } = await supabase.from("match_votes").insert({
+      match_id: match.id,
+      voter_id: session.user.id,
+      voted_for_team_id: winnerId
+    });
+
+    if (error) {
+      setMessage(
+        error.code === "23505"
+          ? "You have already voted in this match."
+          : error.message
+      );
+    } else {
+      setMessage("Your vote has been submitted!");
+    }
+  }
+
+  function teamName(id) {
+  if (!id) return "Waiting for winner";
+    return teams.find((team) => team.id === id)?.name || "Team";
+  }
+{async function addTeam() {
   if (!newTeamName.trim()) return;
 
   const { error } = await supabase.from("teams").insert({
@@ -233,38 +265,6 @@ async function assignPlayer() {
   setMessage("Player assigned successfully!");
   await loadAdminPlayers();
 }
-    await supabase.auth.signOut();
-    setMessage("You have signed out.");
-  }
-
-  async function castVote(match, winnerId) {
-    if (!session || !profile) {
-      setMessage("Please sign in and make sure your player profile is ready.");
-      return;
-    }
-
-    const { error } = await supabase.from("match_votes").insert({
-      match_id: match.id,
-      voter_id: session.user.id,
-      voted_for_team_id: winnerId
-    });
-
-    if (error) {
-      setMessage(
-        error.code === "23505"
-          ? "You have already voted in this match."
-          : error.message
-      );
-    } else {
-      setMessage("Your vote has been submitted!");
-    }
-  }
-
-  function teamName(id) {
-    if (!id) return "Waiting for winner";
-    return teams.find((team) => team.id === id)?.name || "Team";
-  }
-
   function roundTitle(round) {
     return {
       1: "QUARTER FINALS",
