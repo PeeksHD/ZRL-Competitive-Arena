@@ -545,23 +545,6 @@ async function loadAdminPlayers() {
 
   setAdminPlayers(data || []);
 }
-
-async function assignPlayer() {
-  if (!selectedPlayer || !selectedTeam) return;
-
-  const { error } = await supabase
-    .from("profiles")
-    .update({ team_id: selectedTeam })
-    .eq("id", selectedPlayer);
-
-  if (error) {
-    setMessage(error.message);
-    return;
-  }
-
-  setMessage("Player assigned successfully!");
-  await loadAdminPlayers();
-}
       </main>
 
       <footer>
