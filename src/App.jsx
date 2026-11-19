@@ -232,7 +232,7 @@ async function updateMatchWinner(match, winnerId) {
 
   setMessage("Match winner updated!");
   await loadTournament();
-}
+
 
 async function loadAdminPlayers() {
   const { data, error } = await supabase
@@ -491,59 +491,8 @@ async function assignPlayer() {
               </button>
             </form>
           )}
-        </section>
-
-       async function addTeam() {
-  if (!newTeamName.trim()) return;
-
-  const { error } = await supabase.from("teams").insert({
-    tournament_id: tournament.id,
-    name: newTeamName.trim(),
-    seed: Number(newTeamSeed) || teams.length + 1
-  });
-
-  if (error) {
-    setMessage(error.message);
-    return;
-  }
-
-  setNewTeamName("");
-  setNewTeamSeed("");
-  setMessage("Team added successfully!");
-  await loadTournament();
-}
-
-async function updateMatchWinner(match, winnerId) {
-  const { error } = await supabase
-    .from("matches")
-    .update({
-      winner_team_id: winnerId,
-      status: "verified"
-    })
-    .eq("id", match.id);
-
-  if (error) {
-    setMessage(error.message);
-    return;
-  }
-
-  setMessage("Match winner updated!");
-  await loadTournament();
-}
-
-async function loadAdminPlayers() {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .order("display_name");
-
-  if (error) {
-    setMessage(error.message);
-    return;
-  }
-
-  setAdminPlayers(data || []);
-}
+        </section> 
+     
       </main>
 
       <footer>
